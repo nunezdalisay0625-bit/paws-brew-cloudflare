@@ -218,7 +218,6 @@ export default function StaffDashboard() {
   const [generatedSms, setGeneratedSms] = useState<Record<string, GeneratedSms>>({});
   const [generatedReservationSms, setGeneratedReservationSms] =
     useState<Record<string, GeneratedSms>>({});
-  const connectionRef = useRef<ReturnType<typeof ws.connect> | null>(null);
   const knownReservationIds = useRef<Set<string>>(new Set());
   const initialReservationsLoaded = useRef(true);
 
