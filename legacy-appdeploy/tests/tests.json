@@ -1,0 +1,131 @@
+[
+  {
+    "name": "Customer order is saved and a GCash reference can be submitted",
+    "sanity": true,
+    "viewport": "mobile",
+    "covers": [
+      "current cocktail menu item validation",
+      "server-calculated order total",
+      "order persistence",
+      "GCash QR payment instructions",
+      "GCash payment reference submission",
+      "payment remains pending verification",
+      "POST /api/orders",
+      "POST /api/orders/:id/payment-reference"
+    ],
+    "description": "Verifies the five current cocktail names are accepted, the exact total is shown with the Paws & Brew QR, and submitting a reference does not mark payment as verified.",
+    "steps": [
+      "Add Paw Sunrise, Paw Splash, Blueberry Mojito, Strawberry Mojito, and Watermelon Mojito to the cart",
+      "Open checkout, enter a valid customer name and Philippine mobile number, and choose Pickup",
+      "Submit the order and review the GCash payment instructions",
+      "Confirm the exact amount due is ₱435 and the Paws & Brew QR code is visible",
+      "Enter a valid GCash payment reference number and submit it",
+      "Review the order-received confirmation"
+    ],
+    "expected": "The order is saved with all five cocktail items and a total of ₱435. The customer sees the Paws & Brew GCash QR and can submit one reference number; the confirmation and staff record show payment pending verification, not paid."
+  },
+  {
+    "name": "Invalid GCash reference is rejected without changing payment status",
+    "viewport": "desktop",
+    "covers": [
+      "GCash reference validation",
+      "invalid payment-reference guardrail",
+      "POST /api/orders/:id/payment-reference"
+    ],
+    "description": "Verifies a too-short or malformed reference number is rejected and the order remains awaiting a valid customer reference.",
+    "steps": [
+      "Create a valid pickup order and open its GCash payment instructions",
+      "Enter a three-character reference number",
+      "Submit the reference form"
+    ],
+    "expected": "A validation message is shown, the customer remains on the payment screen, and the order is not marked as having a submitted or verified payment."
+  },
+  {
+    "name": "Staff dashboard shows daily, weekly and monthly order and sales totals",
+    "viewport": "mobile",
+    "covers": [
+      "staff sales overview",
+      "today order count and sales value",
+      "current week order count and sales value",
+      "current month order count and sales value",
+      "Philippine peso formatting",
+      "cancelled orders excluded from sales value",
+      "Asia/Manila reporting date boundaries"
+    ],
+    "description": "Verifies the staff dashboard displays three reporting periods with order counts and sales values, using Philippine local dates and currency.",
+    "steps": [
+      "Sign in to the staff dashboard using an authorized staff account",
+      "Review the Orders & sales report section above the order list",
+      "Confirm Today, This week, and This month each display an order count and a peso sales value",
+      "Compare the displayed periods with the dates and totals of the orders shown in the dashboard"
+    ],
+    "expected": "The report displays daily, Monday-to-current-day weekly, and month-to-current-day order counts and sales values in Philippine pesos. Cancelled orders remain in the order count but do not contribute to sales value."
+  },
+  {
+    "name": "Online table reservation appears for staff and creates a copyable SMS",
+    "viewport": "desktop",
+    "covers": [
+      "POST /api/reservations",
+      "GET /api/staff/reservations",
+      "PUT /api/staff/reservations/:id",
+      "reservation details for staff",
+      "new reservation dashboard notification",
+      "reservation status update",
+      "manual reservation SMS copy"
+    ],
+    "description": "Verifies a customer booking is saved with all requested details, appears in the staff reservation section, and produces a personalized message when staff changes its status.",
+    "steps": [
+      "Submit a table reservation with a name, mobile number, date, time, guest count, pets selection, and notes",
+      "Sign in to the staff dashboard using an authorized account",
+      "Refresh the dashboard and review the new reservation notice and reservation card",
+      "Confirm the card displays the customer name, phone, date, time, guest count, pets, and notes",
+      "Change the reservation status to Confirmed",
+      "Review and copy the generated reservation SMS"
+    ],
+    "expected": "The booking appears in Online table reservations with all submitted details. A new-reservation notice or pending count is visible, and changing its status produces a personalized copyable SMS without sending an automatic or paid SMS."
+  },
+  {
+    "name": "Staff verifies payment before confirming an order and gets a status SMS",
+    "viewport": "mobile",
+    "covers": [
+      "GET /api/staff/orders",
+      "PUT /api/staff/orders/:id/payment",
+      "PUT /api/staff/orders/:id",
+      "manual GCash payment verification",
+      "order status update guardrail",
+      "copyable order SMS"
+    ],
+    "description": "Verifies staff can manually verify a submitted GCash reference, then advance the order and copy the matching customer SMS.",
+    "steps": [
+      "Sign in to the staff dashboard using an authorized account",
+      "Open an order whose customer has submitted a GCash reference",
+      "Review the reference number and choose Mark GCash payment verified",
+      "Change the order status to Confirmed",
+      "Review the generated customer SMS and use Copy SMS"
+    ],
+    "expected": "Payment changes to verified only after the staff action. The order can then be confirmed, and a personalized copyable SMS appears; no SMS is automatically sent."
+  },
+  {
+    "name": "Both authorized staff accounts share orders and reservation updates",
+    "viewport": "desktop",
+    "covers": [
+      "staff authentication",
+      "anonymous access denial",
+      "authorized staff email allowlist",
+      "Nikka Lizardo staff email authorization",
+      "shared order and reservation records",
+      "status updates visible to both staff accounts after refresh"
+    ],
+    "description": "Verifies both the existing owner account and Nikka's authorized email can access the same private staff data and see persisted status changes after refresh.",
+    "steps": [
+      "Open #staff while signed out and confirm private order and reservation data is not shown",
+      "Sign in as the existing owner staff account and note an existing order and reservation",
+      "Sign in as nikka.lizardo@gmail.com in a separate browser session",
+      "Confirm both accounts can see the same order and reservation records",
+      "Change an order or reservation status in Actor A's session",
+      "Refresh Actor B's dashboard and confirm the updated status is visible",
+      "Confirm the dashboard's Refresh control and automatic live updates show the shared server state"
+    ],
+    "expected": "Only signed-in authorized accounts can access staff data. The existing owner account and nikka.lizardo@gmail.com can both view the same server-backed orders and reservations; status changes made by either account persist and appear in the other account through live updates."
+  }
+]
