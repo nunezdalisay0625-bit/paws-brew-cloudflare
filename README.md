@@ -24,8 +24,9 @@ After creating the Pages project, add a D1 binding under Settings → Functions 
 
 Add an environment variable `ORDER_ADMIN_EMAILS` containing the comma-separated email addresses allowed to use the staff dashboard. The code also permits `nikka.lizardo@gmail.com`.
 
-## Staff security
-Configure Cloudflare Access to protect `/api/staff/*` and allow only approved staff emails. The Pages Function checks the Access identity header and the `ORDER_ADMIN_EMAILS` allowlist. Do not rely on hiding the staff page URL as security.
+Add an encrypted Pages secret named `STAFF_DASHBOARD_PASSWORD`. Staff use an approved email address plus this password to sign in. The API stores only hashed session tokens in D1 and sets an HttpOnly, Secure, SameSite=Lax session cookie. Sessions expire after 12 hours.
+
+The staff dashboard route is `/staff`. The API checks the session and allowlist for every staff endpoint; do not rely on hiding the route as security.
 
 ## D1
 The D1 schema is documented in `migrations/0001_initial.sql`. The existing D1 database was already initialized in the Cloudflare dashboard; do not run destructive migrations.
