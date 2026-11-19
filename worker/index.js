@@ -30,6 +30,10 @@ async function passwordDigest(value){
  const bits=await crypto.subtle.deriveBits({name:'PBKDF2',salt:encoder.encode('paws-brew-staff-login-v1'),iterations:150000,hash:'SHA-256'},key,256);
  return Array.from(new Uint8Array(bits),byte=>byte.toString(16).padStart(2,'0')).join('');
 }
+async function sha256Hex(value){
+ const digest=await crypto.subtle.digest('SHA-256',encoder.encode(value));
+ return Array.from(new Uint8Array(digest),byte=>byte.toString(16).padStart(2,'0')).join('');
+}
 function constantTimeEqual(a,b){
  if(typeof a!=='string'||typeof b!=='string'||a.length!==b.length)return false;
  let mismatch=0;for(let i=0;i<a.length;i++)mismatch|=a.charCodeAt(i)^b.charCodeAt(i);
@@ -47,7 +51,7 @@ async function staffUser(request,env){
  if(!env.DB)return null;
  const token=sessionToken(request);if(!token)return null;
  try{
-  const hash=await passwordDigest(token);
+  const hash=await sha256Hex(token);
   const row=await env.DB.prepare('SELECT email, expires_at FROM paws_brew_staff_sessions WHERE session_hash=?').bind(hash).first();
   if(!row)return null;
   if(Date.parse(row.expires_at)<=Date.now()){
@@ -75,7 +79,7 @@ export default {
    await ensureSessionTable(env.DB);
    const bytes=crypto.getRandomValues(new Uint8Array(32));
    const token=Array.from(bytes,byte=>byte.toString(16).padStart(2,'0')).join('');
-   const tokenHash=await passwordDigest(token),createdAt=stamp(),expiresAt=new Date(Date.now()+sessionLifetimeSeconds*1000).toISOString();
+   const tokenHash=await sha256Hex(token),createdAt=stamp(),expiresAt=new Date(Date.now()+sessionLifetimeSeconds*1000).toISOString();
    await env.DB.prepare('INSERT INTO paws_brew_staff_sessions (session_hash,email,expires_at,created_at) VALUES (?,?,?,?)').bind(tokenHash,email,expiresAt,createdAt).run();
    return new Response(JSON.stringify({ok:true,user:{email,name:email.split('@')[0]}}),{status:200,headers:{'Content-Type':'application/json; charset=utf-8','Cache-Control':'no-store','Set-Cookie':sessionCookieName+'='+encodeURIComponent(token)+'; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age='+sessionLifetimeSeconds}});
   }
