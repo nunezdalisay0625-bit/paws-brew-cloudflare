@@ -222,8 +222,10 @@ function App() {
       });
       setOrderOpen(false);
       setCart([]);
-    } catch {
-      setOrderError('We could not submit your order. Please try again or message us on Facebook.');
+    } catch (error) {
+      setOrderError(error instanceof Error && error.message
+        ? error.message
+        : 'We could not submit your order. Please try again or message us on Facebook.');
     } finally {
       setOrderSending(false);
     }
@@ -245,7 +247,7 @@ function App() {
     }
   }
 
-  if (window.location.hash === "#staff") return <StaffDashboard />;
+  if (window.location.pathname === "/staff" || window.location.hash === "#staff") return <StaffDashboard />;
   if (paymentOrder) return <PaymentInstructions order={paymentOrder} onBack={() => setPaymentOrder(null)} />;
 
   return (
