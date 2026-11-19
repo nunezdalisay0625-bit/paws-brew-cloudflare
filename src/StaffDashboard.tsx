@@ -206,7 +206,7 @@ export default function StaffDashboard() {
   const [checking, setChecking] = useState(true);
   const [googleBusy, setGoogleBusy] = useState(false);
   const googleButtonRef = useRef<HTMLDivElement>(null);
-  const googleClientId = import.meta.env.VITE_GOOGLE_CLIENT_ID || '';
+  const [googleClientId, setGoogleClientId] = useState('');
   const [orders, setOrders] = useState<Order[]>([]);
   const [reservations, setReservations] = useState<Reservation[]>([]);
   const [loading, setLoading] = useState(false);
@@ -265,6 +265,16 @@ export default function StaffDashboard() {
     setMsg(errors.join(' '));
     setLoading(false);
   }, [user]);
+
+  useEffect(() => {
+    let live = true;
+    api.get('/api/auth/config').then(result => {
+      if (live) setGoogleClientId(String(result.data?.clientId ?? ''));
+    }).catch(() => {
+      if (live) setMsg('Google sign-in configuration could not be loaded. Please refresh or contact the site administrator.');
+    });
+    return () => { live = false; };
+  }, []);
 
   useEffect(() => {
     let live = true;
