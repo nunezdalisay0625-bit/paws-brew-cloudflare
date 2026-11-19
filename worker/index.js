@@ -69,6 +69,7 @@ export default {
   const url=new URL(request.url),path=url.pathname,method=request.method;
   if(method==='OPTIONS')return new Response(null,{status:204,headers:{'Access-Control-Allow-Origin':url.origin,'Access-Control-Allow-Methods':'GET,POST,PUT,OPTIONS','Access-Control-Allow-Headers':'Content-Type'}});
   if(path==='/api/_healthcheck')return json({ok:true,service:'paws-brew-menu',database:!!env.DB,timezone:'Asia/Manila'});
+  if(path==='/api/auth/config'&&method==='GET')return json({clientId:env.GOOGLE_CLIENT_ID||''});
   if(path==='/api/auth/google'&&method==='POST'){
    if(!env.DB)return fail('Staff login is unavailable because the Pages D1 database binding DB is not configured.',503);
    if(!env.GOOGLE_CLIENT_ID)return fail('Google sign-in is not configured yet. Add GOOGLE_CLIENT_ID to Cloudflare Pages secrets.',503);
