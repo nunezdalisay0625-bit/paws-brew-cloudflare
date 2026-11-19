@@ -1,3 +1,14 @@
 name = "paws-brew-online-menu"
 compatibility_date = "2026-11-19"
 pages_build_output_dir = "./dist"
+
+# Bind the existing production database only to production deployments.
+# Preview deployments remain unbound to protect live order data.
+[[env.production.d1_databases]]
+binding = "DB"
+database_name = "paws-brew-db"
+database_id = "f7c92e2a-1247-48a1-b12c-7a07c3138f68"
+
+# Only these approved staff accounts can access the production dashboard.
+[env.production.vars]
+ORDER_ADMIN_EMAILS = "nunezdalisay0625@gmail.com,nikka.lizardo@gmail.com"

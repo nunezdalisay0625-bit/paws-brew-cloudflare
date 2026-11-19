@@ -17,16 +17,85 @@ const uuid=()=>crypto.randomUUID();
 const stamp=()=>new Date().toISOString();
 const mapOrder=r=>({...r,orderReference:r.order_reference,items:JSON.parse(r.items_json||'[]'),deliveryFee:r.delivery_fee,paymentMethod:r.payment_method,paymentStatus:r.payment_status,gcashReferenceNumber:r.gcash_reference_number,paymentReferenceSubmittedAt:r.payment_reference_submitted_at,paymentVerifiedAt:r.payment_verified_at,createdAt:r.created_at});
 const mapReservation=r=>({...r,pets:!!r.pets,createdAt:r.created_at});
-function staffEmail(request){return (request.headers.get('CF-Access-Authenticated-User-Email')||'').trim().toLowerCase();}
-function authorized(request,env){const email=staffEmail(request);const allow=(env.ORDER_ADMIN_EMAILS||'').split(',').map(x=>x.trim().toLowerCase()).filter(Boolean);allow.push('nikka.lizardo@gmail.com');return email && allow.includes(email);}
+const encoder=new TextEncoder();
+const sessionCookieName='pb_staff_session';
+const sessionLifetimeSeconds=43200;
+function staffAllowlist(env){
+ const emails=(env.ORDER_ADMIN_EMAILS||'').split(',').map(x=>x.trim().toLowerCase()).filter(Boolean);
+ emails.push('nikka.lizardo@gmail.com');
+ return new Set(emails);
+}
+async function passwordDigest(value){
+ const key=await crypto.subtle.importKey('raw',encoder.encode(value),'PBKDF2',false,['deriveBits']);
+ const bits=await crypto.subtle.deriveBits({name:'PBKDF2',salt:encoder.encode('paws-brew-staff-login-v1'),iterations:150000,hash:'SHA-256'},key,256);
+ return Array.from(new Uint8Array(bits),byte=>byte.toString(16).padStart(2,'0')).join('');
+}
+async function sha256Hex(value){
+ const digest=await crypto.subtle.digest('SHA-256',encoder.encode(value));
+ return Array.from(new Uint8Array(digest),byte=>byte.toString(16).padStart(2,'0')).join('');
+}
+function constantTimeEqual(a,b){
+ if(typeof a!=='string'||typeof b!=='string'||a.length!==b.length)return false;
+ let mismatch=0;for(let i=0;i<a.length;i++)mismatch|=a.charCodeAt(i)^b.charCodeAt(i);
+ return mismatch===0;
+}
+function sessionToken(request){
+ const cookie=request.headers.get('Cookie')||'';
+ const pair=cookie.split(';').map(part=>part.trim()).find(part=>part.startsWith(sessionCookieName+'='));
+ return pair?decodeURIComponent(pair.slice(sessionCookieName.length+1)):'';
+}
+async function ensureSessionTable(db){
+ await db.prepare("CREATE TABLE IF NOT EXISTS paws_brew_staff_sessions (session_hash TEXT PRIMARY KEY, email TEXT NOT NULL, expires_at TEXT NOT NULL, created_at TEXT NOT NULL)").run();
+}
+async function staffUser(request,env){
+ if(!env.DB)return null;
+ const token=sessionToken(request);if(!token)return null;
+ try{
+  const hash=await sha256Hex(token);
+  const row=await env.DB.prepare('SELECT email, expires_at FROM paws_brew_staff_sessions WHERE session_hash=?').bind(hash).first();
+  if(!row)return null;
+  if(Date.parse(row.expires_at)<=Date.now()){
+   await env.DB.prepare('DELETE FROM paws_brew_staff_sessions WHERE session_hash=?').bind(hash).run();
+   return null;
+  }
+  const email=String(row.email||'').trim().toLowerCase();
+  if(!staffAllowlist(env).has(email))return null;
+  return {email,name:email.split('@')[0]};
+ }catch{return null;}
+}
 async function body(request){try{return await request.json()}catch{return null}}
 export default {
  async fetch(request,env){
   const url=new URL(request.url),path=url.pathname,method=request.method;
   if(method==='OPTIONS')return new Response(null,{status:204,headers:{'Access-Control-Allow-Origin':url.origin,'Access-Control-Allow-Methods':'GET,POST,PUT,OPTIONS','Access-Control-Allow-Headers':'Content-Type'}});
   if(path==='/api/_healthcheck')return json({ok:true,service:'paws-brew-menu',database:!!env.DB,timezone:'Asia/Manila'});
-  if(path==='/api/staff/me'&&method==='GET')return authorized(request,env)?json({user:{email:staffEmail(request),name:staffEmail(request).split('@')[0]}}):fail('Staff access required. Sign in with an authorized account.',401);
+  if(path==='/api/auth/login'&&method==='POST'){
+   if(!env.DB)return fail('Staff login is unavailable because the Pages D1 database binding DB is not configured.',503);
+   const input=await body(request)||{},email=String(input.email||'').trim().toLowerCase(),password=String(input.password||'');
+   if(!staffAllowlist(env).has(email))return fail('This email is not on the authorized staff list.',403);
+   if(!env.STAFF_DASHBOARD_PASSWORD)return fail('Staff login is not configured yet. Add the STAFF_DASHBOARD_PASSWORD secret in Cloudflare Pages settings.',503);
+   const [providedDigest,expectedDigest]=await Promise.all([passwordDigest(password),passwordDigest(env.STAFF_DASHBOARD_PASSWORD)]);
+   if(!constantTimeEqual(providedDigest,expectedDigest))return fail('Incorrect email or password.',401);
+   await ensureSessionTable(env.DB);
+   const bytes=crypto.getRandomValues(new Uint8Array(32));
+   const token=Array.from(bytes,byte=>byte.toString(16).padStart(2,'0')).join('');
+   const tokenHash=await sha256Hex(token),createdAt=stamp(),expiresAt=new Date(Date.now()+sessionLifetimeSeconds*1000).toISOString();
+   await env.DB.prepare('INSERT INTO paws_brew_staff_sessions (session_hash,email,expires_at,created_at) VALUES (?,?,?,?)').bind(tokenHash,email,expiresAt,createdAt).run();
+   return new Response(JSON.stringify({ok:true,user:{email,name:email.split('@')[0]}}),{status:200,headers:{'Content-Type':'application/json; charset=utf-8','Cache-Control':'no-store','Set-Cookie':sessionCookieName+'='+encodeURIComponent(token)+'; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age='+sessionLifetimeSeconds}});
+  }
+  if(path==='/api/auth/logout'&&method==='POST'){
+   if(env.DB){
+    const token=sessionToken(request);
+    if(token){try{const hash=await sha256Hex(token);await env.DB.prepare('DELETE FROM paws_brew_staff_sessions WHERE session_hash=?').bind(hash).run()}catch{}}
+   }
+   return new Response(JSON.stringify({ok:true}),{status:200,headers:{'Content-Type':'application/json; charset=utf-8','Cache-Control':'no-store','Set-Cookie':sessionCookieName+'=; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=0'}});
+  }
+  if(path==='/api/staff/me'&&method==='GET'){
+   const user=await staffUser(request,env);
+   return user?json({user}):fail('Staff access required. Please sign in.',401);
+  }
   if(path==='/api/orders'&&method==='POST'){
+   if(!env.DB)return fail('Online ordering is temporarily unavailable because the Pages D1 database binding DB is not configured.',503);
    const input=await body(request);if(!input)return fail('Invalid order request.');
    const name=String(input.name||'').trim(),phone=normPhone(input.phone),methodChoice=String(input.method||'');
    if(name.length<2||name.length>100||!validPhone(phone)||!['Pickup','Delivery'].includes(methodChoice))return fail('Enter your name, a valid Philippine mobile number, and pickup or delivery.');
@@ -41,6 +110,7 @@ export default {
   }
   const payMatch=path.match(/^\/api\/orders\/([^/]+)\/payment-reference$/);
   if(payMatch&&method==='POST'){
+   if(!env.DB)return fail('Payment reference submission is temporarily unavailable because the Pages D1 database binding DB is not configured.',503);
    const input=await body(request)||{},phone=normPhone(input.phone),ref=String(input.referenceNumber||'').replace(/\s+/g,'');
    if(!validPhone(phone)||!/^[A-Za-z0-9-]{6,30}$/.test(ref))return fail('Enter a valid GCash payment reference number.');
    const row=await env.DB.prepare('SELECT * FROM paws_brew_orders WHERE id=?').bind(payMatch[1]).first();
@@ -49,7 +119,9 @@ export default {
    return json({ok:true,orderReference:row.order_reference,paymentStatus:'pending_verification'});
   }
   if(path.startsWith('/api/staff/')){
-   if(!authorized(request,env))return fail('Staff access required.',401);
+   if(!env.DB)return fail('Staff dashboard is unavailable because the Pages D1 database binding DB is not configured.',503);
+   const user=await staffUser(request,env);
+   if(!user)return fail('Staff access required. Please sign in.',401);
    if(path==='/api/staff/orders'&&method==='GET'){
     const {results=[]}=await env.DB.prepare('SELECT * FROM paws_brew_orders ORDER BY created_at DESC LIMIT 500').all();return json({orders:results.map(mapOrder),nextToken:null});
    }
@@ -76,6 +148,7 @@ export default {
    return fail('Staff endpoint not found.',404);
   }
   if(path==='/api/reservations'&&method==='POST'){
+   if(!env.DB)return fail('Table reservations are temporarily unavailable because the Pages D1 database binding DB is not configured.',503);
    const input=await body(request)||{},name=String(input.name||'').trim(),phone=normPhone(input.phone),date=String(input.date||''),time=String(input.time||''),guests=Number(input.guests),pets=['Yes','yes',true,1].includes(input.pets),notes=String(input.notes||'').trim();
    if(name.length<2||!validPhone(phone)||!/^(\d{4})-(\d{2})-(\d{2})$/.test(date)||!/^([01]\d|2[0-3]):[0-5]\d$/.test(time)||!Number.isInteger(guests)||guests<1||guests>20)return fail('Please check your reservation details.');
    const id=uuid();await env.DB.prepare('INSERT INTO paws_brew_reservations (id,name,phone,date,time,guests,pets,notes,status,created_at) VALUES (?,?,?,?,?,?,?, ?,\'pending\',?)').bind(id,name,phone,date,time,guests,pets?1:0,notes,stamp()).run();return json({ok:true,id,status:'pending'},201);

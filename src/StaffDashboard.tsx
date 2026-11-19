@@ -204,6 +204,9 @@ function smsForReservation(reservation: Reservation, status: string) {
 export default function StaffDashboard() {
   const [user, setUser] = useState<{ email?: string; name?: string } | null>(null);
   const [checking, setChecking] = useState(true);
+  const [loginEmail, setLoginEmail] = useState('');
+  const [loginPassword, setLoginPassword] = useState('');
+  const [loginBusy, setLoginBusy] = useState(false);
   const [orders, setOrders] = useState<Order[]>([]);
   const [reservations, setReservations] = useState<Reservation[]>([]);
   const [loading, setLoading] = useState(false);
@@ -282,17 +285,24 @@ export default function StaffDashboard() {
     return () => window.clearInterval(timer);
   }, [user, load]);
 
-  async function signin() {
+  async function signin(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
     setMsg('');
+    setLoginBusy(true);
     try {
-      await auth.signInWithRedirect();
-    } catch {
-      setMsg('Sign-in failed to start. Please try again.');
+      const currentUser = await auth.signIn(loginEmail, loginPassword);
+      if (!currentUser) throw new Error('Sign-in could not be completed.');
+      setUser({ email: currentUser.email, name: currentUser.name });
+      setLoginPassword('');
+    } catch (error) {
+      setMsg(error instanceof Error ? error.message : 'Sign-in failed. Please check your details and try again.');
+    } finally {
+      setLoginBusy(false);
     }
   }
 
   async function signout() {
-    await auth.signOut();
+    try { await auth.signOut(); } catch { /* Clear local dashboard state even if the session has expired. */ }
     setUser(null);
     setOrders([]);
     setReservations([]);
@@ -417,8 +427,34 @@ export default function StaffDashboard() {
             Sign in with an authorized staff account to manage online orders and table reservations.
           </p>
           {msg && <p className="staff-error">{msg}</p>}
-          <button className="staff-primary" onClick={signin}>Sign in to staff dashboard</button>
-          <a href="#home" className="staff-back">← Customer website</a>
+          <form className="staff-login-form" onSubmit={signin}>
+            <label>
+              Staff email
+              <input
+                type="email"
+                autoComplete="username"
+                required
+                value={loginEmail}
+                onChange={event => setLoginEmail(event.target.value)}
+                placeholder="Enter your authorized staff email"
+              />
+            </label>
+            <label>
+              Password
+              <input
+                type="password"
+                autoComplete="current-password"
+                required
+                value={loginPassword}
+                onChange={event => setLoginPassword(event.target.value)}
+                placeholder="Enter the staff dashboard password"
+              />
+            </label>
+            <button className="staff-primary" type="submit" disabled={loginBusy}>
+              {loginBusy ? 'Signing in…' : 'Sign in to staff dashboard'}
+            </button>
+          </form>
+          <a href="/" className="staff-back">← Customer website</a>
         </section>
       </main>
     );
