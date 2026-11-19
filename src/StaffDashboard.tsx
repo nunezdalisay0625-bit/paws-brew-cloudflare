@@ -210,6 +210,7 @@ export default function StaffDashboard() {
   const [loading, setLoading] = useState(false);
   const [msg, setMsg] = useState('');
   const [filter, setFilter] = useState('active');
+  const [reportPeriod, setReportPeriod] = useState<'today' | 'week' | 'month'>('today');
   const [busy, setBusy] = useState('');
   const [paymentBusy, setPaymentBusy] = useState('');
   const [reservationBusy, setReservationBusy] = useState('');
@@ -458,27 +459,21 @@ export default function StaffDashboard() {
           </div>
           <span className="staff-muted">Philippine peso · Asia/Manila</span>
         </div>
+        <div className="staff-report-controls">
+          <label htmlFor="sales-period">Report period</label>
+          <select id="sales-period" value={reportPeriod} onChange={event => setReportPeriod(event.target.value as 'today' | 'week' | 'month')}>
+            <option value="today">Daily</option>
+            <option value="week">Weekly</option>
+            <option value="month">Monthly</option>
+          </select>
+        </div>
         <div className="staff-report-grid">
           <article className="staff-report-card">
-            <span>Today</span>
-            <strong>{salesReport.today.orders}</strong>
-            <small>Orders</small>
-            <b>{peso(salesReport.today.sales)}</b>
-            <small>Sales value</small>
-          </article>
-          <article className="staff-report-card">
-            <span>This week</span>
-            <strong>{salesReport.week.orders}</strong>
-            <small>Orders</small>
-            <b>{peso(salesReport.week.sales)}</b>
-            <small>Sales value</small>
-          </article>
-          <article className="staff-report-card">
-            <span>This month</span>
-            <strong>{salesReport.month.orders}</strong>
-            <small>Orders</small>
-            <b>{peso(salesReport.month.sales)}</b>
-            <small>Sales value</small>
+            <span>{reportPeriod === 'today' ? 'Today' : reportPeriod === 'week' ? 'This week (Monday to today)' : 'This month (1st to today)'}</span>
+            <strong>{salesReport[reportPeriod].orders}</strong>
+            <small>Number of orders</small>
+            <b>{peso(salesReport[reportPeriod].sales)}</b>
+            <small>Total sales</small>
           </article>
         </div>
         <p className="staff-report-note">
