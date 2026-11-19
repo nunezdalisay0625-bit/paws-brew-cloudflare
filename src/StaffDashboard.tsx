@@ -213,6 +213,8 @@ export default function StaffDashboard() {
   const [msg, setMsg] = useState('');
   const [filter, setFilter] = useState('active');
   const [reportPeriod, setReportPeriod] = useState<'today' | 'week' | 'month'>('today');
+  const [reservationFilter, setReservationFilter] = useState('all');
+  const [reservationReportStatus, setReservationReportStatus] = useState('all');
   const [busy, setBusy] = useState('');
   const [paymentBusy, setPaymentBusy] = useState('');
   const [reservationBusy, setReservationBusy] = useState('');
@@ -458,6 +460,15 @@ export default function StaffDashboard() {
   const pendingReservations = reservations.filter(reservation =>
     reservation.status === 'pending'
   ).length;
+  const shownReservations = useMemo(
+    () => reservations.filter(reservation =>
+      reservationFilter === 'all' || reservation.status === reservationFilter
+    ),
+    [reservations, reservationFilter]
+  );
+  const reservationReportCount = reservationReportStatus === 'all'
+    ? reservations.length
+    : reservations.filter(reservation => reservation.status === reservationReportStatus).length;
   const shownOrders = useMemo(
     () => orders.filter(order => filter === 'all' ||
       (filter === 'active'
@@ -669,16 +680,32 @@ export default function StaffDashboard() {
           </span>
         </div>
 
-        {!loading && !reservations.length && (
+        <div className="staff-report-controls staff-reservation-filter">
+          <label htmlFor="reservation-filter">Show bookings</label>
+          <select
+            id="reservation-filter"
+            value={reservationFilter}
+            onChange={event => setReservationFilter(event.target.value)}
+          >
+            <option value="all">All bookings ({reservations.length})</option>
+            {reservationStatuses.map(([status, label]) => (
+              <option key={status} value={status}>
+                {label} ({reservations.filter(reservation => reservation.status === status).length})
+              </option>
+            ))}
+          </select>
+        </div>
+
+        {!loading && !shownReservations.length && (
           <section className="staff-empty">
             <CalendarDays />
-            <h2>No table reservations yet</h2>
-            <p>Customer bookings from the website will appear here.</p>
+            <h2>{reservations.length ? 'No bookings in this status' : 'No table reservations yet'}</h2>
+            <p>{reservations.length ? 'Choose another booking status to view customer records.' : 'Customer bookings from the website will appear here.'}</p>
           </section>
         )}
 
         <section className="staff-reservations-grid">
-          {reservations.map(reservation => (
+          {shownReservations.map(reservation => (
             <article className="staff-reservation-card" key={reservation.id}>
               <div className="staff-order-top">
                 <b>{reservation.name}</b>
@@ -791,22 +818,28 @@ export default function StaffDashboard() {
           </div>
           <span className="staff-muted">All table bookings</span>
         </div>
+        <div className="staff-report-controls">
+          <label htmlFor="reservation-report-status">Reservation status</label>
+          <select
+            id="reservation-report-status"
+            value={reservationReportStatus}
+            onChange={event => setReservationReportStatus(event.target.value)}
+          >
+            <option value="all">All bookings</option>
+            {reservationStatuses.map(([status, label]) => (
+              <option key={status} value={status}>{label}</option>
+            ))}
+          </select>
+        </div>
         <div className="staff-report-grid">
           <article className="staff-report-card">
-            <span>Total reservations</span>
-            <strong>{reservations.length}</strong>
-            <small>All bookings received</small>
+            <span>{reservationReportStatus === 'all' ? 'Total reservations' : reservationStatusLabel(reservationReportStatus) + ' reservations'}</span>
+            <strong>{reservationReportCount}</strong>
+            <small>{reservationReportStatus === 'all' ? 'All bookings received' : 'Bookings in selected status'}</small>
           </article>
-          {reservationStatuses.map(([status, label]) => (
-            <article className="staff-report-card" key={status}>
-              <span>{label}</span>
-              <strong>{reservations.filter(reservation => reservation.status === status).length}</strong>
-              <small>Reservations</small>
-            </article>
-          ))}
         </div>
         <p className="staff-report-note">
-          Reservation counts are grouped by their current booking status and include all reservations received.
+          Select a status to see its reservation count. Use the booking filter above to view the full customer details for those reservations.
         </p>
       </section>
 
