@@ -5,10 +5,21 @@ const request = async (method: string, path: string, body?: unknown) => {
     headers: body === undefined ? {} : { 'Content-Type': 'application/json' },
     body: body === undefined ? undefined : JSON.stringify(body),
   });
-  const data = await response.json().catch(() => ({}));
+
+  const raw = await response.text();
+  let data: any = {};
+  if (raw) {
+    try { data = JSON.parse(raw); }
+    catch { data = { error: raw.slice(0, 500) }; }
+  }
+
   if (!response.ok) {
-    const error = new Error(data?.error || 'Request failed') as Error & { data?: unknown };
+    const message = data?.error || data?.message ||
+      (raw ? 'Server returned HTTP ' + response.status + ': ' + raw.slice(0, 300) :
+        'Server returned HTTP ' + response.status + '.');
+    const error = new Error(message) as Error & { data?: unknown; status?: number };
     error.data = data;
+    error.status = response.status;
     throw error;
   }
   return { data };
