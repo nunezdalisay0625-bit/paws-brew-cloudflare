@@ -1,0 +1,85 @@
+const MENU = new Map([
+['Americano',69],['Spanish Latte',89],['Caramel Macchiato',89],['French Vanilla',89],['White Chocolate Mocha',89],['Mocha',89],['Drip Coffee',89],['Egg Coffee',120],
+['Sparkling Blueberry',69],['Sparkling Lychee',69],['Sparkling Mango',69],
+['Strawberry Milkshake',95],['Blueberry Milkshake',95],['Lychee Milkshake',95],['Mango Milkshake',95],['Mixed Berries Milkshake',125],
+['Chocolate Heaven Waffles',149],['Classic Waffles',79],['Blueberry Waffles',149],['Strawberry Waffles',149],['Ham & Cheese',89],['Quesadilla',105],['Chicken Wrap',149],
+['Italian Spaghetti',180],['Creamy Carbonara',180],['Pesto Pasta',180],['Bihon-Canton with Bagnet',150],
+['Liempo Silog',180],['Porkchop Silog',149],['Boneless Chicken Silog',149],['Skinless Longganisa Silog',99],['Hotsilog',99],['Tocilog',99],['Bangsilog',149],['Steamed Rice',20],
+['Chicken Strips',180],['Chicken Poppers',195],['Loaded Nachos',180],['Loaded Fries',90],['Empanada',105],['Cheese Sticks',100],['Potato Rolls',100],['Tofu Rolls',100],
+['Pup Cup',45],['Chicken Pasta',65],['Liver Pasta',65],['Mixed Veggies',65],
+['Paw Sunrise',75],['Paw Splash',75],['Blueberry Mojito',95],['Strawberry Mojito',95],['Watermelon Mojito',95],['Paws Rainbow',95],['Paws Tropical Colada',120],['Bottomless Tequila Mojito',450]
+]);
+const json=(data,status=200)=>new Response(JSON.stringify(data),{status,headers:{'Content-Type':'application/json; charset=utf-8','Cache-Control':'no-store'}});
+const fail=(error,status=400)=>json({ok:false,error},status);
+const normPhone=v=>String(v||'').replace(/[\s()-]/g,'');
+const validPhone=v=>/^09\d{9}$/.test(v)||/^639\d{9}$/.test(v)||/^\+639\d{9}$/.test(v);
+const uuid=()=>crypto.randomUUID();
+const stamp=()=>new Date().toISOString();
+const mapOrder=r=>({...r,orderReference:r.order_reference,items:JSON.parse(r.items_json||'[]'),deliveryFee:r.delivery_fee,paymentMethod:r.payment_method,paymentStatus:r.payment_status,gcashReferenceNumber:r.gcash_reference_number,paymentReferenceSubmittedAt:r.payment_reference_submitted_at,paymentVerifiedAt:r.payment_verified_at,createdAt:r.created_at});
+const mapReservation=r=>({...r,pets:!!r.pets,createdAt:r.created_at});
+function staffEmail(request){return (request.headers.get('CF-Access-Authenticated-User-Email')||'').trim().toLowerCase();}
+function authorized(request,env){const email=staffEmail(request);const allow=(env.ORDER_ADMIN_EMAILS||'').split(',').map(x=>x.trim().toLowerCase()).filter(Boolean);allow.push('nikka.lizardo@gmail.com');return email && allow.includes(email);}
+async function body(request){try{return await request.json()}catch{return null}}
+export default {
+ async fetch(request,env){
+  const url=new URL(request.url),path=url.pathname,method=request.method;
+  if(method==='OPTIONS')return new Response(null,{status:204,headers:{'Access-Control-Allow-Origin':url.origin,'Access-Control-Allow-Methods':'GET,POST,PUT,OPTIONS','Access-Control-Allow-Headers':'Content-Type'}});
+  if(path==='/api/_healthcheck')return json({ok:true,service:'paws-brew-menu',database:!!env.DB,timezone:'Asia/Manila'});
+  if(path==='/api/staff/me'&&method==='GET')return authorized(request,env)?json({user:{email:staffEmail(request),name:staffEmail(request).split('@')[0]}}):fail('Staff access required. Sign in with an authorized account.',401);
+  if(path==='/api/orders'&&method==='POST'){
+   const input=await body(request);if(!input)return fail('Invalid order request.');
+   const name=String(input.name||'').trim(),phone=normPhone(input.phone),methodChoice=String(input.method||'');
+   if(name.length<2||name.length>100||!validPhone(phone)||!['Pickup','Delivery'].includes(methodChoice))return fail('Enter your name, a valid Philippine mobile number, and pickup or delivery.');
+   const address=String(input.address||'').trim(),notes=String(input.notes||'').trim(),raw=Array.isArray(input.items)?input.items:[];
+   if(!raw.length||raw.length>40)return fail('Your cart is empty or contains too many items.');
+   const items=[];for(const item of raw){const itemName=String(item.name||'').trim(),price=MENU.get(itemName),quantity=Number(item.quantity);if(price===undefined||!Number.isInteger(quantity)||quantity<1||quantity>50)return fail('One or more order items are invalid. Refresh the menu and try again.');items.push({name:itemName,price,quantity});}
+   if(methodChoice==='Delivery'&&!address)return fail('Please enter your complete delivery address.');
+   const subtotal=items.reduce((sum,x)=>sum+x.price*x.quantity,0),deliveryFee=methodChoice==='Delivery'?75:0,total=subtotal+deliveryFee;
+   const id=uuid(),orderReference='PB-'+Date.now().toString(36).toUpperCase(),createdAt=stamp();
+   await env.DB.prepare('INSERT INTO paws_brew_orders (id,order_reference,name,phone,method,address,notes,items_json,subtotal,delivery_fee,total,status,payment_method,payment_status,gcash_reference_number,created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,\'pending_confirmation\',\'GCash\',\'awaiting_reference\',\'\',?)').bind(id,orderReference,name,phone,methodChoice,address,notes,JSON.stringify(items),subtotal,deliveryFee,total,createdAt).run();
+   return json({ok:true,orderId:id,orderReference,total,status:'pending_confirmation',paymentStatus:'awaiting_reference'},201);
+  }
+  const payMatch=path.match(/^\/api\/orders\/([^/]+)\/payment-reference$/);
+  if(payMatch&&method==='POST'){
+   const input=await body(request)||{},phone=normPhone(input.phone),ref=String(input.referenceNumber||'').replace(/\s+/g,'');
+   if(!validPhone(phone)||!/^[A-Za-z0-9-]{6,30}$/.test(ref))return fail('Enter a valid GCash payment reference number.');
+   const row=await env.DB.prepare('SELECT * FROM paws_brew_orders WHERE id=?').bind(payMatch[1]).first();
+   if(!row)return fail('Order not found.',404);if(normPhone(row.phone)!==phone)return fail('Order details could not be verified.',403);if(row.payment_status==='verified')return fail('Payment already verified.',409);
+   await env.DB.prepare('UPDATE paws_brew_orders SET gcash_reference_number=?,payment_status=\'pending_verification\',payment_reference_submitted_at=? WHERE id=?').bind(ref,stamp(),payMatch[1]).run();
+   return json({ok:true,orderReference:row.order_reference,paymentStatus:'pending_verification'});
+  }
+  if(path.startsWith('/api/staff/')){
+   if(!authorized(request,env))return fail('Staff access required.',401);
+   if(path==='/api/staff/orders'&&method==='GET'){
+    const {results=[]}=await env.DB.prepare('SELECT * FROM paws_brew_orders ORDER BY created_at DESC LIMIT 500').all();return json({orders:results.map(mapOrder),nextToken:null});
+   }
+   if(path==='/api/staff/reservations'&&method==='GET'){
+    const {results=[]}=await env.DB.prepare('SELECT * FROM paws_brew_reservations ORDER BY created_at DESC LIMIT 500').all();return json({reservations:results.map(mapReservation),nextToken:null});
+   }
+   const verify=path.match(/^\/api\/staff\/orders\/([^/]+)\/payment$/);
+   if(verify&&method==='PUT'){
+    const row=await env.DB.prepare('SELECT * FROM paws_brew_orders WHERE id=?').bind(verify[1]).first();if(!row)return fail('Order not found.',404);if(!row.gcash_reference_number)return fail('Customer has not submitted a GCash reference.',409);
+    await env.DB.prepare('UPDATE paws_brew_orders SET payment_status=\'verified\',payment_verified_at=? WHERE id=?').bind(stamp(),verify[1]).run();return json({ok:true,id:verify[1],paymentStatus:'verified'});
+   }
+   const order=path.match(/^\/api\/staff\/orders\/([^/]+)$/);
+   if(order&&method==='PUT'){
+    const input=await body(request)||{},status=String(input.status||''),valid=['pending_confirmation','confirmed','preparing','out_for_delivery','ready','completed','cancelled'];if(!valid.includes(status))return fail('Invalid order status.');
+    const row=await env.DB.prepare('SELECT * FROM paws_brew_orders WHERE id=?').bind(order[1]).first();if(!row)return fail('Order not found.',404);
+    if(row.payment_status!=='verified'&&!['pending_confirmation','cancelled'].includes(status))return fail('Verify GCash payment before moving this order forward.',409);
+    await env.DB.prepare('UPDATE paws_brew_orders SET status=? WHERE id=?').bind(status,order[1]).run();return json({ok:true,id:order[1],status});
+   }
+   const reservation=path.match(/^\/api\/staff\/reservations\/([^/]+)$/);
+   if(reservation&&method==='PUT'){
+    const input=await body(request)||{},status=String(input.status||''),valid=['pending','confirmed','seated','completed','declined','cancelled'];if(!valid.includes(status))return fail('Invalid reservation status.');
+    const result=await env.DB.prepare('UPDATE paws_brew_reservations SET status=? WHERE id=?').bind(status,reservation[1]).run();if(!result.meta.changes)return fail('Reservation not found.',404);return json({ok:true,id:reservation[1],status});
+   }
+   return fail('Staff endpoint not found.',404);
+  }
+  if(path==='/api/reservations'&&method==='POST'){
+   const input=await body(request)||{},name=String(input.name||'').trim(),phone=normPhone(input.phone),date=String(input.date||''),time=String(input.time||''),guests=Number(input.guests),pets=['Yes','yes',true,1].includes(input.pets),notes=String(input.notes||'').trim();
+   if(name.length<2||!validPhone(phone)||!/^(\d{4})-(\d{2})-(\d{2})$/.test(date)||!/^([01]\d|2[0-3]):[0-5]\d$/.test(time)||!Number.isInteger(guests)||guests<1||guests>20)return fail('Please check your reservation details.');
+   const id=uuid();await env.DB.prepare('INSERT INTO paws_brew_reservations (id,name,phone,date,time,guests,pets,notes,status,created_at) VALUES (?,?,?,?,?,?,?, ?,\'pending\',?)').bind(id,name,phone,date,time,guests,pets?1:0,notes,stamp()).run();return json({ok:true,id,status:'pending'},201);
+  }
+  return fail('Not found.',404);
+ }
+};
