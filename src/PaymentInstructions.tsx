@@ -1,6 +1,6 @@
 import { useState, type FormEvent } from 'react';
 import { api } from './lib/api';
-import { ArrowLeft, CheckCircle2, ShieldCheck } from 'lucide-react';
+import { ArrowLeft, CheckCircle2 } from 'lucide-react';
 import GcashQr from './GcashQr';
 
 type PaymentOrder = {
