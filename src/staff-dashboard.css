@@ -233,3 +233,9 @@
 @media (max-width: 420px) {
   .staff-reservation-details { grid-template-columns: 1fr; }
 }
+
+/* Sales period selector */
+.staff-report-controls{display:flex;align-items:center;gap:12px;margin:16px 0;flex-wrap:wrap}
+.staff-report-controls label{font-weight:700;color:var(--staff-muted,#667085)}
+.staff-report-controls select{min-width:160px;padding:10px 14px;border:1px solid #d8dedb;border-radius:10px;background:#fff;color:#173f3b;font:inherit}
+.staff-report-grid{grid-template-columns:minmax(220px,360px)!important}
