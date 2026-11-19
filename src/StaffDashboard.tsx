@@ -2,7 +2,6 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { auth, api } from './lib/api';
 import {
   RefreshCw,
-  LogOut,
   ShoppingBag,
   Clock3,
   CheckCircle2,
@@ -204,9 +203,6 @@ function smsForReservation(reservation: Reservation, status: string) {
 export default function StaffDashboard() {
   const [user, setUser] = useState<{ email?: string; name?: string } | null>(null);
   const [checking, setChecking] = useState(true);
-  const [loginEmail, setLoginEmail] = useState('');
-  const [loginPassword, setLoginPassword] = useState('');
-  const [loginBusy, setLoginBusy] = useState(false);
   const [orders, setOrders] = useState<Order[]>([]);
   const [reservations, setReservations] = useState<Reservation[]>([]);
   const [loading, setLoading] = useState(false);
@@ -284,34 +280,6 @@ export default function StaffDashboard() {
     const timer = window.setInterval(() => { void load(); }, 20000);
     return () => window.clearInterval(timer);
   }, [user, load]);
-
-  async function signin(event: React.FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    setMsg('');
-    setLoginBusy(true);
-    try {
-      const currentUser = await auth.signIn(loginEmail, loginPassword);
-      if (!currentUser) throw new Error('Sign-in could not be completed.');
-      setUser({ email: currentUser.email, name: currentUser.name });
-      setLoginPassword('');
-    } catch (error) {
-      setMsg(error instanceof Error ? error.message : 'Sign-in failed. Please check your details and try again.');
-    } finally {
-      setLoginBusy(false);
-    }
-  }
-
-  async function signout() {
-    try { await auth.signOut(); } catch { /* Clear local dashboard state even if the session has expired. */ }
-    setUser(null);
-    setOrders([]);
-    setReservations([]);
-    setGeneratedSms({});
-    setGeneratedReservationSms({});
-    setReservationNotice('');
-    knownReservationIds.current.clear();
-    initialReservationsLoaded.current = true;
-  }
 
   async function updateOrder(order: Order, status: string) {
     setBusy(order.id);
@@ -424,36 +392,13 @@ export default function StaffDashboard() {
           <p className="staff-eyebrow">PAWS & BREW · STAFF ONLY</p>
           <h1>Staff Dashboard</h1>
           <p className="staff-muted">
-            Sign in with an authorized staff account to manage online orders and table reservations.
+            This page is protected by Cloudflare Access. Sign in with an authorized staff email
+            through the Cloudflare Access prompt, then reload this page.
           </p>
           {msg && <p className="staff-error">{msg}</p>}
-          <form className="staff-login-form" onSubmit={signin}>
-            <label>
-              Staff email
-              <input
-                type="email"
-                autoComplete="username"
-                required
-                value={loginEmail}
-                onChange={event => setLoginEmail(event.target.value)}
-                placeholder="Enter your authorized staff email"
-              />
-            </label>
-            <label>
-              Password
-              <input
-                type="password"
-                autoComplete="current-password"
-                required
-                value={loginPassword}
-                onChange={event => setLoginPassword(event.target.value)}
-                placeholder="Enter the staff dashboard password"
-              />
-            </label>
-            <button className="staff-primary" type="submit" disabled={loginBusy}>
-              {loginBusy ? 'Signing in…' : 'Sign in to staff dashboard'}
-            </button>
-          </form>
+          <button className="staff-primary" onClick={() => window.location.reload()}>
+            Check staff access again
+          </button>
           <a href="/" className="staff-back">← Customer website</a>
         </section>
       </main>
@@ -471,9 +416,6 @@ export default function StaffDashboard() {
         <div className="staff-actions">
           <button className="staff-secondary" onClick={load} disabled={loading}>
             <RefreshCw size={16} /> Refresh
-          </button>
-          <button className="staff-secondary" onClick={signout}>
-            <LogOut size={16} /> Sign out
           </button>
         </div>
       </header>
