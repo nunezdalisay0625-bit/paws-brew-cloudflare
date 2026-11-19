@@ -1,0 +1,1 @@
+The original AppDeploy image assets belong in this folder: paws-and-brew-logo.png, cafe-seating.jpg, cafe-interior.jpg, cafe-counter.jpg, cafe-lounge.jpg, paws-and-brew-icon-192.png, paws-and-brew-icon-512.png. Add the original files before production launch. The original GCash QR is preserved in src/GcashQr.tsx.
