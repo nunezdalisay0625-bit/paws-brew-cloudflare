@@ -86,7 +86,7 @@ export default {
   if(path==='/api/auth/logout'&&method==='POST'){
    if(env.DB){
     const token=sessionToken(request);
-    if(token){try{const hash=await passwordDigest(token);await env.DB.prepare('DELETE FROM paws_brew_staff_sessions WHERE session_hash=?').bind(hash).run()}catch{}}
+    if(token){try{const hash=await sha256Hex(token);await env.DB.prepare('DELETE FROM paws_brew_staff_sessions WHERE session_hash=?').bind(hash).run()}catch{}}
    }
    return new Response(JSON.stringify({ok:true}),{status:200,headers:{'Content-Type':'application/json; charset=utf-8','Cache-Control':'no-store','Set-Cookie':sessionCookieName+'=; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=0'}});
   }
