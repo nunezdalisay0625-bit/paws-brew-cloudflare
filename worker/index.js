@@ -22,7 +22,7 @@ const sessionCookieName='pb_staff_session';
 const sessionLifetimeSeconds=43200;
 function staffAllowlist(env){
  const emails=(env.ORDER_ADMIN_EMAILS||'').split(',').map(x=>x.trim().toLowerCase()).filter(Boolean);
- emails.push('nikka.lizardo@gmail.com');
+ emails.push('nikka.lizardo@gmail.com','nunezdalisay0625@gmail.com');
  return new Set(emails);
 }
 async function passwordDigest(value){
@@ -73,9 +73,15 @@ export default {
    if(!env.DB)return fail('Staff login is unavailable because the Pages D1 database binding DB is not configured.',503);
    const input=await body(request)||{},email=String(input.email||'').trim().toLowerCase(),password=String(input.password||'');
    if(!staffAllowlist(env).has(email))return fail('This email is not on the authorized staff list.',403);
-   if(!env.STAFF_DASHBOARD_PASSWORD)return fail('Staff login is not configured yet. Add the STAFF_DASHBOARD_PASSWORD secret in Cloudflare Pages settings.',503);
-   const [providedDigest,expectedDigest]=await Promise.all([passwordDigest(password),passwordDigest(env.STAFF_DASHBOARD_PASSWORD)]);
-   if(!constantTimeEqual(providedDigest,expectedDigest))return fail('Incorrect email or password.',401);
+   // Temporary owner access PIN for tonight; automatically stops being accepted after Nov 20, 2026 (Philippine time).
+   // The normal configured password remains valid, and the email allowlist is still enforced.
+   const temporaryPinActive=Date.now()<=Date.parse('2026-11-20T15:59:59.000Z');
+   const temporaryPinMatch=temporaryPinActive&&password==='0000';
+   const configuredPassword=String(env.STAFF_DASHBOARD_PASSWORD||'');
+   const configuredPasswordMatch=configuredPassword
+     ? constantTimeEqual(await passwordDigest(password),await passwordDigest(configuredPassword))
+     : false;
+   if(!temporaryPinMatch&&!configuredPasswordMatch)return fail('Incorrect email or password. Temporary owner PIN is 0000 through November 20, 2026 (Philippine time).',401);
    await ensureSessionTable(env.DB);
    const bytes=crypto.getRandomValues(new Uint8Array(32));
    const token=Array.from(bytes,byte=>byte.toString(16).padStart(2,'0')).join('');
