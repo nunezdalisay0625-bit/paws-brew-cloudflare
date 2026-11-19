@@ -29,11 +29,4 @@ export const auth = {
       return null;
     }
   },
-  signIn: async (email: string, password: string) => {
-    const result = await api.post('/api/auth/login', { email, password });
-    return (result.data as any)?.user ?? null;
-  },
-  signOut: async () => {
-    await api.post('/api/auth/logout');
-  },
 };
