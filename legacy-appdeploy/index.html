@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#173f3b" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-title" content="Paws & Brew Staff" />
+    <link id="app-manifest" rel="manifest" href="/manifest.webmanifest" />
+    <script>
+      if (new URLSearchParams(window.location.search).get("app") === "staff") {
+        document.getElementById("app-manifest").setAttribute("href", "/staff-manifest.webmanifest");
+        document.title = "Paws & Brew Staff Dashboard";
+      }
+    </script>
+    <link rel="icon" type="image/png" sizes="192x192" href="/resources/paws-and-brew-icon-192.png" />
+    <link rel="apple-touch-icon" href="/resources/paws-and-brew-icon-192.png" />
+    <title>Paws & Brew | Good Coffee, Happy Paws</title>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="./src/main.tsx"></script>
+  </body>
+</html>
