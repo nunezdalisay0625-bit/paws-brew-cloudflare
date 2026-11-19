@@ -239,3 +239,9 @@
 .staff-report-controls label{font-weight:700;color:var(--staff-muted,#667085)}
 .staff-report-controls select{min-width:160px;padding:10px 14px;border:1px solid #d8dedb;border-radius:10px;background:#fff;color:#173f3b;font:inherit}
 .staff-report-grid{grid-template-columns:minmax(220px,360px)!important}
+
+
+.staff-login-form{display:grid;gap:14px;margin:22px 0 12px;text-align:left}
+.staff-login-form label{display:grid;gap:7px;color:#4a3828;font-size:13px;font-weight:800}
+.staff-login-form input{width:100%;min-width:0;box-sizing:border-box;border:1px solid #d9ceb8;border-radius:11px;padding:13px 14px;background:#fff;color:#352b20;font:inherit;font-weight:500;outline-color:#087d79}
+.staff-login-form button:disabled{opacity:.65;cursor:wait}
