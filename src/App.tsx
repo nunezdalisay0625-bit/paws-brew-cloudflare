@@ -9,7 +9,6 @@ import {
   Clock3,
   Coffee,
   MapPin,
-  Menu as MenuIcon,
   PawPrint,
   ShoppingBag,
   ShoppingCart,
