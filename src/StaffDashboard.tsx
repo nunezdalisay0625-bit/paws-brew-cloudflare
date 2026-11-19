@@ -9,7 +9,6 @@ import {
   Copy,
   Check,
   CalendarDays,
-  PawPrint,
   ShieldCheck,
   Bell,
   X,
