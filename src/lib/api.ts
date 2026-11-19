@@ -40,8 +40,12 @@ export const auth = {
       return null;
     }
   },
-  signIn: async (email: string, password: string) => {
-    const result = await api.post('/api/auth/login', { email, password });
+  getGoogleClientId: async () => {
+    const result = await api.get('/api/auth/config');
+    return String((result.data as any)?.clientId ?? '');
+  },
+  signInWithGoogle: async (credential: string) => {
+    const result = await api.post('/api/auth/google', { credential });
     return (result.data as any)?.user ?? null;
   },
   signOut: async () => {

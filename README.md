@@ -24,7 +24,7 @@ After creating the Pages project, add a D1 binding under Settings → Functions 
 
 Add an environment variable `ORDER_ADMIN_EMAILS` containing the comma-separated email addresses allowed to use the staff dashboard. The code also permits `nikka.lizardo@gmail.com`.
 
-Add an encrypted Pages secret named `STAFF_DASHBOARD_PASSWORD`. Staff use an approved email address plus this password to sign in. The API stores only hashed session tokens in D1 and sets an HttpOnly, Secure, SameSite=Lax session cookie. Sessions expire after 12 hours.
+Configure Google Identity Services for the staff sign-in. Create an OAuth 2.0 Client ID of type Web application in Google Cloud Console. Add the production Pages origin and each preview origin you intend to use under Authorized JavaScript origins. Set the build-time variable `VITE_GOOGLE_CLIENT_ID` to that client ID in Cloudflare Pages (Production and Preview environments). Also set the Pages secret `GOOGLE_CLIENT_ID` to the same value for server-side audience verification. Keep `ORDER_ADMIN_EMAILS` as the comma-separated allowlist; the code also permits the owner and Nikka's approved accounts. Google ID tokens are verified server-side with Google's tokeninfo endpoint, including audience, verified email, and expiry checks. The API then stores only hashed session tokens in D1 and sets an HttpOnly, Secure, SameSite=Lax session cookie. Sessions expire after 12 hours. Remove the old `STAFF_DASHBOARD_PASSWORD` secret after Google sign-in has been tested.
 
 The staff dashboard route is `/staff`. The API checks the session and allowlist for every staff endpoint; do not rely on hiding the route as security.
 
@@ -32,4 +32,4 @@ The staff dashboard route is `/staff`. The API checks the session and allowlist 
 The D1 schema is documented in `migrations/0001_initial.sql`. The existing D1 database was already initialized in the Cloudflare dashboard; do not run destructive migrations.
 
 ## Current status
-The original source archive, React frontend adaptation, Cloudflare Pages Function bridge, D1 API, menu image assets, and Daily/Weekly/Monthly sales period selector have been added. This repository is not yet deployed or production-verified. The Pages D1 binding, Access policy, environment variables, deployment, and end-to-end tests remain.
+The original source archive, React frontend adaptation, Cloudflare Pages Function bridge, D1 API, menu image assets, and Daily/Weekly/Monthly sales period selector have been added. This repository is not yet deployed or production-verified. The Pages D1 binding, Google OAuth client configuration, environment variables, deployment, and end-to-end tests must be completed and verified.

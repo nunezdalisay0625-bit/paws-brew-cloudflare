@@ -69,25 +69,30 @@ export default {
   const url=new URL(request.url),path=url.pathname,method=request.method;
   if(method==='OPTIONS')return new Response(null,{status:204,headers:{'Access-Control-Allow-Origin':url.origin,'Access-Control-Allow-Methods':'GET,POST,PUT,OPTIONS','Access-Control-Allow-Headers':'Content-Type'}});
   if(path==='/api/_healthcheck')return json({ok:true,service:'paws-brew-menu',database:!!env.DB,timezone:'Asia/Manila'});
-  if(path==='/api/auth/login'&&method==='POST'){
+  if(path==='/api/auth/config'&&method==='GET')return json({clientId:env.GOOGLE_CLIENT_ID||''});
+  if(path==='/api/auth/google'&&method==='POST'){
    if(!env.DB)return fail('Staff login is unavailable because the Pages D1 database binding DB is not configured.',503);
-   const input=await body(request)||{},email=String(input.email||'').trim().toLowerCase(),password=String(input.password||'');
-   if(!staffAllowlist(env).has(email))return fail('This email is not on the authorized staff list.',403);
-   // Temporary owner access PIN for tonight; automatically stops being accepted after Nov 20, 2026 (Philippine time).
-   // The normal configured password remains valid, and the email allowlist is still enforced.
-   const temporaryPinActive=Date.now()<=Date.parse('2026-11-20T15:59:59.000Z');
-   const temporaryPinMatch=temporaryPinActive&&password==='0000';
-   const configuredPassword=String(env.STAFF_DASHBOARD_PASSWORD||'');
-   const configuredPasswordMatch=configuredPassword
-     ? constantTimeEqual(await passwordDigest(password),await passwordDigest(configuredPassword))
-     : false;
-   if(!temporaryPinMatch&&!configuredPasswordMatch)return fail('Incorrect email or password. Temporary owner PIN is 0000 through November 20, 2026 (Philippine time).',401);
+   if(!env.GOOGLE_CLIENT_ID)return fail('Google sign-in is not configured yet. Add GOOGLE_CLIENT_ID to Cloudflare Pages secrets.',503);
+   const input=await body(request)||{},credential=String(input.credential||'');
+   if(!credential||credential.length>10000)return fail('Google did not return a valid sign-in credential.',400);
+   let identity;
+   try{
+    const verification=await fetch('https://oauth2.googleapis.com/tokeninfo?id_token='+encodeURIComponent(credential));
+    if(!verification.ok)return fail('Google could not verify this sign-in. Please try again.',401);
+    identity=await verification.json();
+   }catch{return fail('Google sign-in could not reach Google for verification. Please try again.',502);}
+   const email=String(identity.email||'').trim().toLowerCase();
+   const expiresAtSeconds=Number(identity.exp||0);
+   if(identity.aud!==env.GOOGLE_CLIENT_ID||identity.email_verified!=='true'||expiresAtSeconds<=Math.floor(Date.now()/1000)){
+    return fail('Google sign-in verification failed. Please select your authorized Google account.',401);
+   }
+   if(!staffAllowlist(env).has(email))return fail('This Google account is not on the authorized staff list.',403);
    await ensureSessionTable(env.DB);
    const bytes=crypto.getRandomValues(new Uint8Array(32));
    const token=Array.from(bytes,byte=>byte.toString(16).padStart(2,'0')).join('');
-   const tokenHash=await sha256Hex(token),createdAt=stamp(),expiresAt=new Date(Date.now()+sessionLifetimeSeconds*1000).toISOString();
-   await env.DB.prepare('INSERT INTO paws_brew_staff_sessions (session_hash,email,expires_at,created_at) VALUES (?,?,?,?)').bind(tokenHash,email,expiresAt,createdAt).run();
-   return new Response(JSON.stringify({ok:true,user:{email,name:email.split('@')[0]}}),{status:200,headers:{'Content-Type':'application/json; charset=utf-8','Cache-Control':'no-store','Set-Cookie':sessionCookieName+'='+encodeURIComponent(token)+'; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age='+sessionLifetimeSeconds}});
+   const tokenHash=await sha256Hex(token),createdAt=stamp(),sessionExpiresAt=new Date(Date.now()+sessionLifetimeSeconds*1000).toISOString();
+   await env.DB.prepare('INSERT INTO paws_brew_staff_sessions (session_hash,email,expires_at,created_at) VALUES (?,?,?,?)').bind(tokenHash,email,sessionExpiresAt,createdAt).run();
+   return new Response(JSON.stringify({ok:true,user:{email,name:String(identity.name||email.split('@')[0])}}),{status:200,headers:{'Content-Type':'application/json; charset=utf-8','Cache-Control':'no-store','Set-Cookie':sessionCookieName+'='+encodeURIComponent(token)+'; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age='+sessionLifetimeSeconds}});
   }
   if(path==='/api/auth/logout'&&method==='POST'){
    if(env.DB){

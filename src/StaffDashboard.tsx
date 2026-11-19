@@ -204,9 +204,9 @@ function smsForReservation(reservation: Reservation, status: string) {
 export default function StaffDashboard() {
   const [user, setUser] = useState<{ email?: string; name?: string } | null>(null);
   const [checking, setChecking] = useState(true);
-  const [loginEmail, setLoginEmail] = useState('');
-  const [loginPassword, setLoginPassword] = useState('');
-  const [loginBusy, setLoginBusy] = useState(false);
+  const [googleBusy, setGoogleBusy] = useState(false);
+  const googleButtonRef = useRef<HTMLDivElement>(null);
+  const [googleClientId, setGoogleClientId] = useState('');
   const [orders, setOrders] = useState<Order[]>([]);
   const [reservations, setReservations] = useState<Reservation[]>([]);
   const [loading, setLoading] = useState(false);
@@ -268,6 +268,16 @@ export default function StaffDashboard() {
 
   useEffect(() => {
     let live = true;
+    api.get('/api/auth/config').then(result => {
+      if (live) setGoogleClientId(String(result.data?.clientId ?? ''));
+    }).catch(() => {
+      if (live) setMsg('Google sign-in configuration could not be loaded. Please refresh or contact the site administrator.');
+    });
+    return () => { live = false; };
+  }, []);
+
+  useEffect(() => {
+    let live = true;
     auth.getUser().then(currentUser => {
       if (live) setUser(currentUser ? { email: currentUser.email, name: currentUser.name } : null);
     }).catch(() => {
@@ -279,27 +289,71 @@ export default function StaffDashboard() {
   }, []);
 
   useEffect(() => {
+    if (user || checking) return;
+    const container = googleButtonRef.current;
+    if (!container) return;
+    if (!googleClientId) {
+      setMsg('Google sign-in is almost ready. The Google OAuth Client ID still needs to be added to Cloudflare Pages settings.');
+      return;
+    }
+    let cancelled = false;
+    const renderGoogleButton = () => {
+      const google = (window as any).google;
+      if (cancelled || !google?.accounts?.id || !googleButtonRef.current) return;
+      google.accounts.id.initialize({
+        client_id: googleClientId,
+        callback: async (response: { credential?: string }) => {
+          if (!response.credential) {
+            setMsg('Google did not return a sign-in credential. Please try again.');
+            return;
+          }
+          setMsg('');
+          setGoogleBusy(true);
+          try {
+            const currentUser = await auth.signInWithGoogle(response.credential);
+            if (!currentUser) throw new Error('Google sign-in could not be completed.');
+            setUser({ email: currentUser.email, name: currentUser.name });
+          } catch (error) {
+            setMsg(error instanceof Error ? error.message : 'Google sign-in failed. Please try again.');
+          } finally {
+            setGoogleBusy(false);
+          }
+        },
+      });
+      google.accounts.id.renderButton(googleButtonRef.current, {
+        type: 'standard',
+        theme: 'outline',
+        size: 'large',
+        text: 'signin_with',
+        shape: 'rectangular',
+        logo_alignment: 'left',
+        width: 320,
+      });
+    };
+    const existing = document.querySelector<HTMLScriptElement>('script[data-google-identity]');
+    if ((window as any).google?.accounts?.id) {
+      renderGoogleButton();
+    } else if (existing) {
+      existing.addEventListener('load', renderGoogleButton, { once: true });
+    } else {
+      const script = document.createElement('script');
+      script.src = 'https://accounts.google.com/gsi/client';
+      script.async = true;
+      script.defer = true;
+      script.dataset.googleIdentity = 'true';
+      script.onload = renderGoogleButton;
+      script.onerror = () => setMsg('Google sign-in could not load. Please check your internet connection and refresh.');
+      document.head.appendChild(script);
+    }
+    return () => { cancelled = true; };
+  }, [user, checking, googleClientId]);
+
+  useEffect(() => {
     if (!user) return;
     load();
     const timer = window.setInterval(() => { void load(); }, 20000);
     return () => window.clearInterval(timer);
   }, [user, load]);
-
-  async function signin(event: React.FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    setMsg('');
-    setLoginBusy(true);
-    try {
-      const currentUser = await auth.signIn(loginEmail, loginPassword);
-      if (!currentUser) throw new Error('Sign-in could not be completed.');
-      setUser({ email: currentUser.email, name: currentUser.name });
-      setLoginPassword('');
-    } catch (error) {
-      setMsg(error instanceof Error ? error.message : 'Sign-in failed. Please check your details and try again.');
-    } finally {
-      setLoginBusy(false);
-    }
-  }
 
   async function signout() {
     try { await auth.signOut(); } catch { /* Clear local dashboard state even if the session has expired. */ }
@@ -427,33 +481,10 @@ export default function StaffDashboard() {
             Sign in with an authorized staff account to manage online orders and table reservations.
           </p>
           {msg && <p className="staff-error">{msg}</p>}
-          <form className="staff-login-form" onSubmit={signin}>
-            <label>
-              Staff email
-              <input
-                type="email"
-                autoComplete="username"
-                required
-                value={loginEmail}
-                onChange={event => setLoginEmail(event.target.value)}
-                placeholder="Enter your authorized staff email"
-              />
-            </label>
-            <label>
-              Password
-              <input
-                type="password"
-                autoComplete="current-password"
-                required
-                value={loginPassword}
-                onChange={event => setLoginPassword(event.target.value)}
-                placeholder="Enter the staff dashboard password"
-              />
-            </label>
-            <button className="staff-primary" type="submit" disabled={loginBusy}>
-              {loginBusy ? 'Signing in…' : 'Sign in to staff dashboard'}
-            </button>
-          </form>
+          <div className="staff-google-login">
+            <div ref={googleButtonRef} aria-label="Sign in with Google" />
+            {googleBusy && <p className="staff-muted">Verifying your Google account…</p>}
+          </div>
           <a href="/" className="staff-back">← Customer website</a>
         </section>
       </main>
