@@ -13,22 +13,27 @@ const request = async (method: string, path: string, body?: unknown) => {
   }
   return { data };
 };
+
 export const api = {
   get: (path: string) => request('GET', path),
   post: (path: string, body?: unknown) => request('POST', path, body),
   put: (path: string, body?: unknown) => request('PUT', path, body),
 };
+
 export const auth = {
   getUser: async () => {
     try {
       const result = await api.get('/api/staff/me');
       return (result.data as any)?.user ?? null;
-    } catch { return null; }
+    } catch {
+      return null;
+    }
   },
-  signInWithRedirect: async () => {
-    window.location.href = '/cdn-cgi/access/login?returnTo=' + encodeURIComponent(window.location.pathname + '#staff');
+  signIn: async (email: string, password: string) => {
+    const result = await api.post('/api/auth/login', { email, password });
+    return (result.data as any)?.user ?? null;
   },
   signOut: async () => {
-    window.location.href = '/cdn-cgi/access/logout?returnTo=' + encodeURIComponent('/');
+    await api.post('/api/auth/logout');
   },
 };
