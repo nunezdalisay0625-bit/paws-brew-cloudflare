@@ -516,37 +516,6 @@ export default function StaffDashboard() {
         <div className="staff-stat"><CheckCircle2 /><b>{completedOrders}<small>Completed orders</small></b></div>
       </section>
 
-      <section className="staff-section staff-sales-report">
-        <div className="staff-section-head">
-          <div>
-            <p className="staff-eyebrow">SALES OVERVIEW</p>
-            <h2>Orders &amp; sales report</h2>
-          </div>
-          <span className="staff-muted">Philippine peso · Asia/Manila</span>
-        </div>
-        <div className="staff-report-controls">
-          <label htmlFor="sales-period">Report period</label>
-          <select id="sales-period" value={reportPeriod} onChange={event => setReportPeriod(event.target.value as 'today' | 'week' | 'month')}>
-            <option value="today">Daily</option>
-            <option value="week">Weekly</option>
-            <option value="month">Monthly</option>
-          </select>
-        </div>
-        <div className="staff-report-grid">
-          <article className="staff-report-card">
-            <span>{reportPeriod === 'today' ? 'Today' : reportPeriod === 'week' ? 'This week (Monday to today)' : 'This month (1st to today)'}</span>
-            <strong>{salesReport[reportPeriod].orders}</strong>
-            <small>Number of orders</small>
-            <b>{peso(salesReport[reportPeriod].sales)}</b>
-            <small>Total sales</small>
-          </article>
-        </div>
-        <p className="staff-report-note">
-          Order counts include all orders received. Sales value excludes cancelled orders and includes
-          orders awaiting payment verification. Amounts are based on the order date in Philippine time.
-        </p>
-      </section>
-
       {reservationNotice && (
         <div className="staff-reservation-notice" role="status" aria-live="polite">
           <Bell size={18} />
@@ -781,6 +750,64 @@ export default function StaffDashboard() {
             </article>
           ))}
         </section>
+      </section>
+
+      <section className="staff-section staff-sales-report">
+        <div className="staff-section-head">
+          <div>
+            <p className="staff-eyebrow">SALES OVERVIEW</p>
+            <h2>Orders &amp; sales report</h2>
+          </div>
+          <span className="staff-muted">Philippine peso · Asia/Manila</span>
+        </div>
+        <div className="staff-report-controls">
+          <label htmlFor="sales-period">Report period</label>
+          <select id="sales-period" value={reportPeriod} onChange={event => setReportPeriod(event.target.value as 'today' | 'week' | 'month')}>
+            <option value="today">Daily</option>
+            <option value="week">Weekly</option>
+            <option value="month">Monthly</option>
+          </select>
+        </div>
+        <div className="staff-report-grid">
+          <article className="staff-report-card">
+            <span>{reportPeriod === 'today' ? 'Today' : reportPeriod === 'week' ? 'This week (Monday to today)' : 'This month (1st to today)'}</span>
+            <strong>{salesReport[reportPeriod].orders}</strong>
+            <small>Number of orders</small>
+            <b>{peso(salesReport[reportPeriod].sales)}</b>
+            <small>Total sales</small>
+          </article>
+        </div>
+        <p className="staff-report-note">
+          Order counts include all orders received. Sales value excludes cancelled orders and includes
+          orders awaiting payment verification. Amounts are based on the order date in Philippine time.
+        </p>
+      </section>
+
+      <section className="staff-section staff-reservation-report">
+        <div className="staff-section-head">
+          <div>
+            <p className="staff-eyebrow">BOOKING OVERVIEW</p>
+            <h2>Reservations report</h2>
+          </div>
+          <span className="staff-muted">All table bookings</span>
+        </div>
+        <div className="staff-report-grid">
+          <article className="staff-report-card">
+            <span>Total reservations</span>
+            <strong>{reservations.length}</strong>
+            <small>All bookings received</small>
+          </article>
+          {reservationStatuses.map(([status, label]) => (
+            <article className="staff-report-card" key={status}>
+              <span>{label}</span>
+              <strong>{reservations.filter(reservation => reservation.status === status).length}</strong>
+              <small>Reservations</small>
+            </article>
+          ))}
+        </div>
+        <p className="staff-report-note">
+          Reservation counts are grouped by their current booking status and include all reservations received.
+        </p>
       </section>
 
       <footer className="staff-footer">
