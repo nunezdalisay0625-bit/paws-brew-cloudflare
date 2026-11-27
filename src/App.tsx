@@ -247,7 +247,8 @@ function App() {
     }
   }
 
-  if (window.location.pathname === "/staff" || window.location.hash === "#staff") return <StaffDashboard />;
+  const normalizedPath = window.location.pathname.replace(/\\/+$/, "") || "/";
+  if (normalizedPath === "/staff" || normalizedPath === "/staff/index.html" || window.location.hash === "#staff") return <StaffDashboard />;
   if (paymentOrder) return <PaymentInstructions order={paymentOrder} onBack={() => setPaymentOrder(null)} />;
 
   return (
