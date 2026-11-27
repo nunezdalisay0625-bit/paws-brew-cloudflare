@@ -264,7 +264,7 @@ export default function StaffDashboard() {
       }
       await api.post('/api/staff/push/subscribe', { subscription: subscription.toJSON() });
       setPushEnabled(true);
-      setPushMessage('Notifications are enabled on this phone. Nikka should sign in on her phone and enable notifications there too.');
+      setPushMessage('Notifications are enabled on this phone.');
     } catch (error) {
       setPushMessage(error instanceof Error ? error.message : 'Could not enable notifications. Please try again.');
     } finally {
