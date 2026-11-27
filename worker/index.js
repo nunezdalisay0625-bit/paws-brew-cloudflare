@@ -84,7 +84,12 @@ async function notifyStaff(env,notification){
   }));
  }catch(error){console.error('Could not send staff push notifications',error);}
 }
-function scheduleStaffNotification(ctx,env,notification){\n const task=notifyStaff(env,notification);\n if(ctx&&typeof ctx.waitUntil==='function')ctx.waitUntil(task);\n else task.catch(error=>console.error('Background push notification failed',error));\n}\nasync function body(request){try{return await request.json()}catch{return null}}
+function scheduleStaffNotification(ctx,env,notification){ 
+ const task=notifyStaff(env,notification); 
+ if(ctx&&typeof ctx.waitUntil==='function')ctx.waitUntil(task); 
+ else task.catch(error=>console.error('Background push notification failed',error)); 
+} 
+async function body(request){try{return await request.json()}catch{return null}}
 export default {
  async fetch(request,env,ctx){
   const url=new URL(request.url),path=url.pathname,method=request.method;
