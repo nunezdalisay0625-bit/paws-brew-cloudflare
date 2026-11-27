@@ -22,7 +22,7 @@ const sessionCookieName='pb_staff_session';
 const sessionLifetimeSeconds=43200;
 function staffAllowlist(env){
  const emails=(env.ORDER_ADMIN_EMAILS||'').split(',').map(x=>x.trim().toLowerCase()).filter(Boolean);
- emails.push('nikka.lizardo@gmail.com','nunezdalisay0625@gmail.com');
+ emails.push('nikka.lizardo@gmail.com','nunezdalisay0625@gmail.com','vanessajuliar@gmail.com','ronatayjane@gmail.com');
  return new Set(emails);
 }
 async function passwordDigest(value){
