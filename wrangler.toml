@@ -11,4 +11,4 @@ database_id = "f7c92e2a-1247-48a1-b12c-7a07c3138f68"
 
 # Only these approved staff accounts can access the production dashboard.
 [env.production.vars]
-ORDER_ADMIN_EMAILS = "nunezdalisay0625@gmail.com,nikka.lizardo@gmail.com"
+ORDER_ADMIN_EMAILS = "nunezdalisay0625@gmail.com,nikka.lizardo@gmail.com,vanessajuliar@gmail.com,ronatayjane@gmail.com"
