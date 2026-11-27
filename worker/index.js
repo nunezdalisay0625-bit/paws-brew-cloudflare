@@ -1,3 +1,4 @@
+import { buildPushPayload } from '@block65/webcrypto-web-push';
 const MENU = new Map([
 ['Americano',69],['Spanish Latte',89],['Caramel Macchiato',89],['French Vanilla',89],['White Chocolate Mocha',89],['Mocha',89],['Drip Coffee',89],['Egg Coffee',120],
 ['Sparkling Blueberry',69],['Sparkling Lychee',69],['Sparkling Mango',69],
@@ -63,9 +64,34 @@ async function staffUser(request,env){
   return {email,name:email.split('@')[0]};
  }catch{return null;}
 }
+async function ensurePushTable(db){
+ await db.prepare("CREATE TABLE IF NOT EXISTS paws_brew_push_subscriptions (endpoint TEXT PRIMARY KEY, email TEXT NOT NULL, subscription_json TEXT NOT NULL, created_at TEXT NOT NULL, updated_at TEXT NOT NULL)").run();
+}
+async function notifyStaff(env,notification){
+ if(!env.DB||!env.VAPID_PUBLIC_KEY||!env.VAPID_PRIVATE_KEY||!env.VAPID_SUBJECT)return;
+ try{
+  await ensurePushTable(env.DB);
+  const {results=[]}=await env.DB.prepare('SELECT endpoint, subscription_json FROM paws_brew_push_subscriptions').all();
+  const vapid={subject:env.VAPID_SUBJECT,publicKey:env.VAPID_PUBLIC_KEY,privateKey:env.VAPID_PRIVATE_KEY};
+  await Promise.allSettled(results.map(async row=>{
+   try{
+    const subscription=JSON.parse(row.subscription_json);
+    const payload=await buildPushPayload({data:notification,options:{ttl:300,urgency:'high'}},subscription,vapid);
+    const response=await fetch(subscription.endpoint,{...payload,signal:AbortSignal.timeout(8000)});
+    if(response.status===404||response.status===410)await env.DB.prepare('DELETE FROM paws_brew_push_subscriptions WHERE endpoint=?').bind(row.endpoint).run();
+    else if(!response.ok)console.error('Push delivery failed with status',response.status);
+   }catch(error){console.error('Push delivery failed',error);}
+  }));
+ }catch(error){console.error('Could not send staff push notifications',error);}
+}
+function scheduleStaffNotification(ctx,env,notification){ 
+ const task=notifyStaff(env,notification); 
+ if(ctx&&typeof ctx.waitUntil==='function')ctx.waitUntil(task); 
+ else task.catch(error=>console.error('Background push notification failed',error)); 
+} 
 async function body(request){try{return await request.json()}catch{return null}}
 export default {
- async fetch(request,env){
+ async fetch(request,env,ctx){
   const url=new URL(request.url),path=url.pathname,method=request.method;
   if(method==='OPTIONS')return new Response(null,{status:204,headers:{'Access-Control-Allow-Origin':url.origin,'Access-Control-Allow-Methods':'GET,POST,PUT,OPTIONS','Access-Control-Allow-Headers':'Content-Type'}});
   if(path==='/api/_healthcheck')return json({ok:true,service:'paws-brew-menu',database:!!env.DB,timezone:'Asia/Manila'});
@@ -117,6 +143,7 @@ export default {
    const subtotal=items.reduce((sum,x)=>sum+x.price*x.quantity,0),deliveryFee=methodChoice==='Delivery'?75:0,total=subtotal+deliveryFee;
    const id=uuid(),orderReference='PB-'+Date.now().toString(36).toUpperCase(),createdAt=stamp();
    await env.DB.prepare('INSERT INTO paws_brew_orders (id,order_reference,name,phone,method,address,notes,items_json,subtotal,delivery_fee,total,status,payment_method,payment_status,gcash_reference_number,created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,\'pending_confirmation\',\'GCash\',\'awaiting_reference\',\'\',?)').bind(id,orderReference,name,phone,methodChoice,address,notes,JSON.stringify(items),subtotal,deliveryFee,total,createdAt).run();
+   scheduleStaffNotification(ctx,env,{title:'New Paws & Brew order',body:name+' · '+methodChoice+' · '+orderReference,data:{url:'/staff',type:'order'}});
    return json({ok:true,orderId:id,orderReference,total,status:'pending_confirmation',paymentStatus:'awaiting_reference'},201);
   }
   const payMatch=path.match(/^\/api\/orders\/([^/]+)\/payment-reference$/);
@@ -133,6 +160,18 @@ export default {
    if(!env.DB)return fail('Staff dashboard is unavailable because the Pages D1 database binding DB is not configured.',503);
    const user=await staffUser(request,env);
    if(!user)return fail('Staff access required. Please sign in.',401);
+   if(path==='/api/staff/push/config'&&method==='GET'){
+    return json({publicKey:env.VAPID_PUBLIC_KEY||''});
+   }
+   if(path==='/api/staff/push/subscribe'&&method==='POST'){
+    if(!env.VAPID_PUBLIC_KEY||!env.VAPID_PRIVATE_KEY||!env.VAPID_SUBJECT)return fail('Push notifications are not configured on the server yet.',503);
+    const input=await body(request)||{},subscription=input.subscription;
+    if(!subscription||typeof subscription.endpoint!=='string'||!subscription.endpoint.startsWith('https://')||typeof subscription.keys?.p256dh!=='string'||typeof subscription.keys?.auth!=='string')return fail('The browser returned an invalid push subscription.');
+    await ensurePushTable(env.DB);
+    const now=stamp();
+    await env.DB.prepare('INSERT INTO paws_brew_push_subscriptions (endpoint,email,subscription_json,created_at,updated_at) VALUES (?,?,?,?,?) ON CONFLICT(endpoint) DO UPDATE SET email=excluded.email,subscription_json=excluded.subscription_json,updated_at=excluded.updated_at').bind(subscription.endpoint,user.email,JSON.stringify(subscription),now,now).run();
+    return json({ok:true,enabled:true});
+   }
    if(path==='/api/staff/orders'&&method==='GET'){
     const {results=[]}=await env.DB.prepare('SELECT * FROM paws_brew_orders ORDER BY created_at DESC LIMIT 500').all();return json({orders:results.map(mapOrder),nextToken:null});
    }
@@ -162,7 +201,7 @@ export default {
    if(!env.DB)return fail('Table reservations are temporarily unavailable because the Pages D1 database binding DB is not configured.',503);
    const input=await body(request)||{},name=String(input.name||'').trim(),phone=normPhone(input.phone),date=String(input.date||''),time=String(input.time||''),guests=Number(input.guests),pets=['Yes','yes',true,1].includes(input.pets),notes=String(input.notes||'').trim();
    if(name.length<2||!validPhone(phone)||!/^(\d{4})-(\d{2})-(\d{2})$/.test(date)||!/^([01]\d|2[0-3]):[0-5]\d$/.test(time)||!Number.isInteger(guests)||guests<1||guests>20)return fail('Please check your reservation details.');
-   const id=uuid();await env.DB.prepare('INSERT INTO paws_brew_reservations (id,name,phone,date,time,guests,pets,notes,status,created_at) VALUES (?,?,?,?,?,?,?, ?,\'pending\',?)').bind(id,name,phone,date,time,guests,pets?1:0,notes,stamp()).run();return json({ok:true,id,status:'pending'},201);
+   const id=uuid();await env.DB.prepare('INSERT INTO paws_brew_reservations (id,name,phone,date,time,guests,pets,notes,status,created_at) VALUES (?,?,?,?,?,?,?, ?,\'pending\',?)').bind(id,name,phone,date,time,guests,pets?1:0,notes,stamp()).run();scheduleStaffNotification(ctx,env,{title:'New Paws & Brew table reservation',body:name+' · '+date+' '+time+' · '+guests+' guest(s)',data:{url:'/staff',type:'reservation'}});return json({ok:true,id,status:'pending'},201);
   }
   return fail('Not found.',404);
  }
