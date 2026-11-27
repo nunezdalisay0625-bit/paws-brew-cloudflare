@@ -201,12 +201,24 @@ function smsForReservation(reservation: Reservation, status: string) {
   }
 }
 
+function urlBase64ToUint8Array(value: string) {
+  const padding = '='.repeat((4 - value.length % 4) % 4);
+  const base64 = (value + padding).replace(/-/g, '+').replace(/_/g, '/');
+  const raw = window.atob(base64);
+  const bytes = new Uint8Array(raw.length);
+  for (let i = 0; i < raw.length; i += 1) bytes[i] = raw.charCodeAt(i);
+  return bytes;
+}
+
 export default function StaffDashboard() {
   const [user, setUser] = useState<{ email?: string; name?: string } | null>(null);
   const [checking, setChecking] = useState(true);
   const [googleBusy, setGoogleBusy] = useState(false);
   const googleButtonRef = useRef<HTMLDivElement>(null);
   const [googleClientId, setGoogleClientId] = useState('');
+  const [pushEnabled, setPushEnabled] = useState(false);
+  const [pushBusy, setPushBusy] = useState(false);
+  const [pushMessage, setPushMessage] = useState('');
   const [orders, setOrders] = useState<Order[]>([]);
   const [reservations, setReservations] = useState<Reservation[]>([]);
   const [loading, setLoading] = useState(false);
@@ -224,6 +236,41 @@ export default function StaffDashboard() {
     useState<Record<string, GeneratedSms>>({});
   const knownReservationIds = useRef<Set<string>>(new Set());
   const initialReservationsLoaded = useRef(true);
+
+  async function enablePushNotifications() {
+    setPushBusy(true);
+    setPushMessage('');
+    try {
+      if (!('serviceWorker' in navigator) || !('PushManager' in window) || !('Notification' in window)) {
+        throw new Error('This browser does not support push notifications. Please use Chrome on Android or install the site as an app on a supported device.');
+      }
+      if (Notification.permission === 'denied') {
+        throw new Error('Notifications are blocked for this site. Enable them in your browser or phone settings, then try again.');
+      }
+      const permission = Notification.permission === 'granted'
+        ? 'granted'
+        : await Notification.requestPermission();
+      if (permission !== 'granted') throw new Error('Please allow notifications so this phone can receive new order and booking alerts.');
+      const config = await api.get('/api/staff/push/config');
+      const publicKey = String(config.data?.publicKey || '');
+      if (!publicKey) throw new Error('Push notifications are not configured on the server yet.');
+      const registration = await navigator.serviceWorker.register('/sw.js');
+      let subscription = await registration.pushManager.getSubscription();
+      if (!subscription) {
+        subscription = await registration.pushManager.subscribe({
+          userVisibleOnly: true,
+          applicationServerKey: urlBase64ToUint8Array(publicKey),
+        });
+      }
+      await api.post('/api/staff/push/subscribe', { subscription: subscription.toJSON() });
+      setPushEnabled(true);
+      setPushMessage('Notifications are enabled on this phone. Nikka should sign in on her phone and enable notifications there too.');
+    } catch (error) {
+      setPushMessage(error instanceof Error ? error.message : 'Could not enable notifications. Please try again.');
+    } finally {
+      setPushBusy(false);
+    }
+  }
 
   const load = useCallback(async () => {
     if (!user) return;
@@ -511,6 +558,9 @@ export default function StaffDashboard() {
           <p className="staff-muted">Signed in as {user.email || user.name}</p>
         </div>
         <div className="staff-actions">
+          <button className="staff-secondary" onClick={enablePushNotifications} disabled={pushBusy || pushEnabled}>
+            <Bell size={16} /> {pushBusy ? 'Enabling…' : pushEnabled ? 'Notifications on' : 'Enable notifications'}
+          </button>
           <button className="staff-secondary" onClick={load} disabled={loading}>
             <RefreshCw size={16} /> Refresh
           </button>
@@ -519,6 +569,7 @@ export default function StaffDashboard() {
           </button>
         </div>
       </header>
+      {pushMessage && <p className="staff-push-message" role="status">{pushMessage}</p>}
 
       <section className="staff-stats">
         <div className="staff-stat"><ShoppingBag /><b>{orders.length}<small>All orders</small></b></div>
